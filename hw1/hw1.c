@@ -3,21 +3,35 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <pwd.h>
 
 #define MAX_PID_SIZE 20
-#define MAX_PROC_NAME_SIZE 256
-#define MAX_USER_NAME_SIZE 256
+#define MAX_NAME_SIZE 256
 
 struct info{
     int pid;
-    char proc_name[MAX_PROC_NAME_SIZE];
-    char user_name[MAX_USER_NAME_SIZE];
+    char proc_name[MAX_NAME_SIZE];
+    char user_name[MAX_NAME_SIZE];
+    char fd[4];
+    char type[30];
+    int inode;
+    char name[MAX_NAME_SIZE];
 };
+
+void error(const char* str, int error_no){
+    fprintf(stderr,"Error: fail to %s, %s\n",str,strerror(error_no));
+    exit(EXIT_FAILURE);
+}
+
+void print_pinfo(struct info *p){
+    printf("%-40s%-20d%-20s%-20s%-20s%-20d%-20s\n",p->proc_name,p->pid,p->user_name,p->fd,p->type,p->inode,p->name);
+}
 
 bool is_pid(const char* str){
     for(size_t i=0;i<strlen(str);++i){
@@ -28,15 +42,64 @@ bool is_pid(const char* str){
     return true;
 }
 
-void getUserName(uid_t uid, struct info *p){
+int getUserName(uid_t uid, struct info *p){
     
     struct passwd *getpwuid(), *pw_ptr;
     char numstr[10];
     if(!(pw_ptr=getpwuid(uid))){
         fprintf(stderr,"Username of uid %d not found.",uid);
-        exit(EXIT_FAILURE);
+        //exit(EXIT_FAILURE);
+        return -1;
     }else{
         strcpy(p->user_name,pw_ptr->pw_name);
+        return 0;
+    }
+}
+
+int getMeta(const char* p_path, const char* mode,struct info *p){
+    char path[MAX_NAME_SIZE];
+    memset(path,0,MAX_NAME_SIZE);
+    strcpy(path,p_path);
+    strcat(path,mode);
+    struct stat buffer;
+    if(stat(path,&buffer)==0){
+        memset(p->name,0,MAX_NAME_SIZE);
+        if(readlink(path,p->name,MAX_NAME_SIZE)==-1){
+            error("readlink",errno);
+        }else{
+            p->inode = buffer.st_ino;
+            char type[30];
+            switch(buffer.st_mode & S_IFMT){
+                case S_IFDIR: 
+                    strcpy(type,"DIR");
+                    break;
+                case S_IFREG: 
+                    strcpy(type,"REG");
+                    break;
+                case S_IFCHR: 
+                    strcpy(type,"CHR");
+                    break;
+                case S_IFIFO: 
+                    sprintf(type,"%s%d%c","FIFO[",p->inode,']');
+                    break;
+                case S_IFSOCK: 
+                    sprintf(type,"%s%d%c","socket[",p->inode,']');
+                    break;
+                default:
+                    strcpy(type,"unknown");
+                    break;
+            }
+            strcpy(p->type,type);
+        }
+    }else{
+        if(errno==EACCES){
+            strcat(path," (Permission denied)");
+            p->inode = -1;
+            strcpy(p->type,"unknown");
+            strcpy(p->name,path);
+        }else{
+            error("stat",errno);
+        }
     }
 }
 
@@ -44,30 +107,39 @@ void readInfo(char *pid, struct info *p){
     FILE *fd;
     char dir[MAX_PID_SIZE];
     struct stat buffer;
-    sprintf(dir,"%s%s","/proc/",pid);
+    sprintf(dir,"%s%s%c","/proc/",pid,'/');
     chdir("/proc");
     if(stat(pid,&buffer)==-1){
-        fprintf(stderr,"stat pid %s failed.",pid);
-        exit(EXIT_FAILURE);
+        error("stat",errno);
     }else{
         getUserName(buffer.st_uid,p);
     }
     chdir(dir);
     if((fd=fopen("stat","r"))<0){
         //this error should be handled properly
-        fprintf(stderr,"Fail to open stat file.");
-        exit(EXIT_FAILURE);
+        error("fopen",errno);
     }else{
         //proc/[pid]/stat/
         //pid comm
-        char p_name[MAX_PROC_NAME_SIZE];
+        char p_name[MAX_NAME_SIZE];
         if(!(2==fscanf(fd,"%d %s\n",&(p->pid),p_name))){
-            fprintf(stderr,"Fail to get proccess name.");
-            exit(EXIT_FAILURE);
+            error("fscanf",errno);
         }
         strcpy(p->proc_name,p_name+1);
         p->proc_name[strlen(p->proc_name)-1]='\0';
     }
+    strcpy(p->fd,"cwd");
+    getMeta(dir,p->fd,p);
+    print_pinfo(p);
+
+    getMeta(dir,"root",p);
+    strcpy(p->fd,"rtd");
+    print_pinfo(p);
+
+    strcpy(p->fd,"exe");
+    getMeta(dir,p->fd,p);
+    print_pinfo(p);
+
     fclose(fd);
 }
 
@@ -122,7 +194,6 @@ int main(int argc, char **argv){
         if(is_pid(dirread->d_name)){
             struct info p;
             readInfo(dirread->d_name,&p);
-            printf("%-40s%-20s%-20s\n",p.proc_name,dirread->d_name,p.user_name);
         }
     }
     closedir(dir);

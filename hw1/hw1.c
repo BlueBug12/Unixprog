@@ -18,7 +18,7 @@ struct info{
     int pid;
     char proc_name[MAX_NAME_SIZE];
     char user_name[MAX_NAME_SIZE];
-    char fd[4];
+    char fd[10];
     char type[30];
     int inode;
     char name[MAX_NAME_SIZE];
@@ -45,7 +45,6 @@ bool is_pid(const char* str){
 int getUserName(uid_t uid, struct info *p){
     
     struct passwd *getpwuid(), *pw_ptr;
-    char numstr[10];
     if(!(pw_ptr=getpwuid(uid))){
         fprintf(stderr,"Username of uid %d not found.",uid);
         //exit(EXIT_FAILURE);
@@ -103,9 +102,77 @@ int getMeta(const char* p_path, const char* mode,struct info *p){
     }
 }
 
+void readMem(char *pid, struct info *p){
+    FILE *fd;
+    char path[MAX_NAME_SIZE];
+    sprintf(path,"%s%s%s","/proc/",pid,"/maps");
+
+    //not sure
+    strcpy(p->type,"REG");
+
+    if((fd=fopen(path,"r"))!=NULL){
+        //address perms offset dev inode pathname
+        char *line = NULL;
+        char *token = NULL; 
+        char node[MAX_PID_SIZE];
+        char name[MAX_NAME_SIZE];
+        size_t len = 0;
+        while(getline(&line,&len,fd)!=EOF){
+            if((token=strtok(line," "))!=NULL){
+                token = NULL;//address
+            }
+            if((token=strtok(NULL," "))!=NULL){
+                token = NULL;//perms
+            }
+            if((token=strtok(NULL," "))!=NULL){
+                token = NULL;//offset
+            }
+            if((token=strtok(NULL," "))!=NULL){
+                token = NULL;//dev
+            }
+            if((token=strtok(NULL," "))!=NULL){
+                //inode
+                //duplicated segments
+                if(strcmp(node,token)==0||token[0]=='0'){
+                    continue;
+                }
+                strcpy(node,token);
+            }
+            if((token=strtok(NULL," "))!=NULL){
+                //pathname 
+                strcpy(name,token);
+            }else{
+                error("strtok",errno);
+            }
+
+            if(strlen(name)!=0){
+                if(name[strlen(name)-1]=='\n'){
+                    name[strlen(name)-1]='\0';
+                }
+            }else{
+                error("unexcepted mem name",errno);
+            }
+            
+            if(strstr(name,"(deleted)") != NULL){
+                //remove "(deleted)" string
+                for(size_t i =strlen(name)-1;i>strlen(name)-20;--i){
+                    name[i] = '\0';
+                }
+                strcpy(p->fd,"DEL");
+            }else{
+                strcpy(p->fd,"mem");
+            }
+            strcpy(p->name,name);
+            print_pinfo(p);
+        }
+        free(line);
+        fclose(fd);
+    }
+}
+
 void readInfo(char *pid, struct info *p){
     FILE *fd;
-    char dir[MAX_PID_SIZE];
+    char dir[MAX_NAME_SIZE];
     struct stat buffer;
     sprintf(dir,"%s%s%c","/proc/",pid,'/');
     chdir("/proc");
@@ -115,7 +182,7 @@ void readInfo(char *pid, struct info *p){
         getUserName(buffer.st_uid,p);
     }
     chdir(dir);
-    if((fd=fopen("stat","r"))<0){
+    if((fd=fopen("stat","r"))==NULL){
         //this error should be handled properly
         error("fopen",errno);
     }else{
@@ -139,7 +206,8 @@ void readInfo(char *pid, struct info *p){
     strcpy(p->fd,"exe");
     getMeta(dir,p->fd,p);
     print_pinfo(p);
-
+    
+    readMem(pid,p);
     fclose(fd);
 }
 

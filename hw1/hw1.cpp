@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <pwd.h>
+#include <unordered_set>
 
 #define MAX_PID_SIZE 20
 #define MAX_NAME_SIZE 256
@@ -30,10 +31,14 @@ void error(const char* str, int error_no){
 }
 
 void print_pinfo(struct info *p){
-    printf("%-40s%-20d%-20s%-20s%-20s%-20d%-20s\n",p->proc_name,p->pid,p->user_name,p->fd,p->type,p->inode,p->name);
+    if(p->inode==-1 || strcmp(p->type,"unknown")==0)
+        printf("%-40s%-20d%-20s%-20s%-20s%-20s%-20s\n",p->proc_name,p->pid,p->user_name,p->fd,p->type," ",p->name);
+    else
+        printf("%-40s%-20d%-20s%-20s%-20s%-20d%-20s\n",p->proc_name,p->pid,p->user_name,p->fd,p->type,p->inode,p->name);
+
 }
 
-bool is_pid(const char* str){
+bool is_num(const char* str){
     for(size_t i=0;i<strlen(str);++i){
         if(!isdigit(str[i])){
             return false;
@@ -44,7 +49,7 @@ bool is_pid(const char* str){
 
 int getUserName(uid_t uid, struct info *p){
     
-    struct passwd *getpwuid(), *pw_ptr;
+    struct passwd *pw_ptr;
     if(!(pw_ptr=getpwuid(uid))){
         fprintf(stderr,"Username of uid %d not found.",uid);
         //exit(EXIT_FAILURE);
@@ -55,7 +60,7 @@ int getUserName(uid_t uid, struct info *p){
     }
 }
 
-int getMeta(const char* p_path, const char* mode,struct info *p){
+void getMeta(const char* p_path, const char* mode,struct info *p){
     char path[MAX_NAME_SIZE];
     memset(path,0,MAX_NAME_SIZE);
     strcpy(path,p_path);
@@ -109,7 +114,8 @@ void readMem(char *pid, struct info *p){
 
     //not sure
     strcpy(p->type,"REG");
-
+    std::unordered_set<int>dict;
+    dict.insert(p->inode);
     if((fd=fopen(path,"r"))!=NULL){
         //address perms offset dev inode pathname
         char *line = NULL;
@@ -133,10 +139,13 @@ void readMem(char *pid, struct info *p){
             if((token=strtok(NULL," "))!=NULL){
                 //inode
                 //duplicated segments
-                if(strcmp(node,token)==0||token[0]=='0'){
+                int seg_pid = atoi(token);
+                if(seg_pid==0 || dict.find(seg_pid)!=dict.end()){
                     continue;
+                }else{
+                    p->inode = seg_pid;
+                    dict.insert(seg_pid);
                 }
-                strcpy(node,token);
             }
             if((token=strtok(NULL," "))!=NULL){
                 //pathname 
@@ -168,6 +177,81 @@ void readMem(char *pid, struct info *p){
         free(line);
         fclose(fd);
     }
+}
+
+void readFd(char *pid, struct info *p){
+    char path[MAX_NAME_SIZE];
+    sprintf(path,"%s%s%s","/proc/",pid,"/fd");
+
+    struct dirent *dirread;
+    DIR* dir = opendir(path);
+    if(dir==NULL){
+        strcpy(p->fd,"NOFD");
+        strcpy(p->type,"");
+        p->inode = -1;
+        strcpy(p->name,strcat(path," (Permission denied)"));
+        print_pinfo(p);
+    }else{
+        if(chdir(path)==-1){
+            error("chdir",errno);
+        }
+        
+        while((dirread=readdir(dir))!=NULL){
+            if(is_num(dirread->d_name)){   
+                char d[MAX_NAME_SIZE];
+                if(readlink(dirread->d_name,d,MAX_NAME_SIZE)==-1){
+                    //if(errno!=ENOENT)
+                    error("readlink",errno);
+                }else{
+                    if(d[strlen(d)-1]=='\n')
+                        d[strlen(d)-1] = '\0';
+                    strcpy(p->name,d);
+                    struct stat buffer;
+                    if(stat(dirread->d_name,&buffer)<0){
+                        error("stat",errno);
+                    }else{
+                        p->inode = buffer.st_ino;
+                        strcpy(p->fd,dirread->d_name);
+                        switch(buffer.st_mode & S_IFMT){
+                            case S_IFDIR: 
+                                strcpy(p->type,"DIR");
+                                break;
+                            case S_IFREG: 
+                                strcpy(p->type,"REG");
+                                break;
+                            case S_IFCHR: 
+                                strcpy(p->type,"CHR");
+                                break;
+                            case S_IFIFO: 
+                                strcpy(p->type,"FIFO");
+                                sprintf(p->name,"%s%d%c","pipe[",p->inode,']');
+                                break;
+                            case S_IFSOCK: 
+                                strcpy(p->type,"SOCK");
+                                sprintf(p->name,"%s%d%c","socket[",p->inode,']');
+                                break;
+                            default:
+                                strcpy(p->name,"");
+                                strcpy(p->type,"unknown");
+                                break;
+                        }
+
+                        if(access(dirread->d_name,R_OK & W_OK)==0){
+                            strcat(p->fd,"u");
+                        }else if(access(dirread->d_name,R_OK)==0){
+                            strcat(p->fd,"r");
+                        }else if(access(dirread->d_name,W_OK)==0){
+                            strcat(p->fd,"w");
+                        }else{
+                            error("unexceped W/R permission",errno);
+                        }
+                        print_pinfo(p);
+                    }
+                }
+            }
+        }
+    }
+
 }
 
 void readInfo(char *pid, struct info *p){
@@ -203,11 +287,12 @@ void readInfo(char *pid, struct info *p){
     strcpy(p->fd,"rtd");
     print_pinfo(p);
 
-    strcpy(p->fd,"exe");
-    getMeta(dir,p->fd,p);
+    getMeta(dir,"exe",p);
+    strcpy(p->fd,"txt");
     print_pinfo(p);
     
     readMem(pid,p);
+    readFd(pid,p);
     fclose(fd);
 }
 
@@ -259,7 +344,7 @@ int main(int argc, char **argv){
     //DIR* dir = opendir("./");
     while((dirread = readdir(dir))){
         // traverse pid dir only 
-        if(is_pid(dirread->d_name)){
+        if(is_num(dirread->d_name)){
             struct info p;
             readInfo(dirread->d_name,&p);
         }

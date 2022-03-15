@@ -1,13 +1,13 @@
-CC := gcc
+CXX := g++
 TARGET := hw1
 OBJ := hw1.o
 CFLAGS := -g -Wall -O3
 
 $(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CXX) $(CFLAGS) $^ -o $@
 
 %.o: %.cpp
-	$(CC) $(CFLAGS) -c $<
+	$(CXX) $(CFLAGS) -c $<
 
 .PHONY: clean
 clean:

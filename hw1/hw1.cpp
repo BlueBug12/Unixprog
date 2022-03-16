@@ -266,11 +266,11 @@ void readFd(char *pid, struct info *p){
                                 break;
                             case S_IFIFO: 
                                 strcpy(p->type,"FIFO");
-                                sprintf(p->name,"%s%d%c","pipe[",p->inode,']');
+                                //sprintf(p->name,"%s%d%c","pipe[",p->inode,']');
                                 break;
                             case S_IFSOCK: 
                                 strcpy(p->type,"SOCK");
-                                sprintf(p->name,"%s%d%c","socket[",p->inode,']');
+                                //sprintf(p->name,"%s%d%c","socket[",p->inode,']');
                                 break;
                             default:
                                 strcpy(p->name,"");
@@ -279,10 +279,6 @@ void readFd(char *pid, struct info *p){
                         }
                         if(lstat(dirread->d_name,&buffer)==-1){
                             return;
-                        }
-                        if(S_ISFIFO(buffer.st_mode)){
-                            printf("%d\n",p->pid);
-                            error("FIFO",-1);
                         }
                         bool r = (buffer.st_mode & S_IRUSR);
                         bool w = (buffer.st_mode & S_IWUSR);
@@ -302,8 +298,8 @@ void readFd(char *pid, struct info *p){
                             for(size_t i =strlen(p->name)-1;i>des;--i){
                                 p->name[i] = '\0';
                             }
-                            strcpy(p->type,"unknown");
-                            p->inode = -1;
+                            //strcpy(p->type,"unknown");
+                            //p->inode = -1;
                         }
 
                         print_pinfo(p);

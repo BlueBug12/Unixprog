@@ -10,10 +10,15 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <pwd.h>
+#include <regex.h>
 #include <unordered_set>
 
 #define MAX_PID_SIZE 20
 #define MAX_NAME_SIZE 256
+
+char *comm_regex = NULL;
+char *file_regex = NULL;
+char *type_filter = NULL;
 
 struct info{
     int pid;
@@ -31,6 +36,41 @@ void error(const char* str, int error_no){
 }
 
 void print_pinfo(struct info *p){
+    if(type_filter && strcmp(type_filter,p->type)){
+        return;
+    }
+    if(comm_regex){
+        regex_t preg;
+        if(regcomp(&preg,comm_regex,REG_EXTENDED)==0){
+            const size_t nmatch = 1;
+            regmatch_t matchptr[nmatch];
+            if(regexec(&preg,p->proc_name,nmatch,matchptr,0)==REG_NOMATCH){
+                regfree(&preg);
+                return;
+            }
+            regfree(&preg);
+        }else{
+            error("regcomp",errno);
+        }
+    }
+    
+    if(file_regex){
+        regex_t preg;
+        if(regcomp(&preg,file_regex,REG_EXTENDED)==0){
+            const size_t nmatch = 1;
+            regmatch_t matchptr[nmatch];
+            if(regexec(&preg,p->name,nmatch,matchptr,0)==REG_NOMATCH){
+                regfree(&preg);
+                return;
+            }
+            regfree(&preg);
+        }else{
+            error("regcomp",errno);
+        }
+        
+    }
+    
+
     if(p->inode==-1 || strcmp(p->type,"unknown")==0)
         printf("%-40s%-20d%-20s%-20s%-20s%-20s%-20s\n",p->proc_name,p->pid,p->user_name,p->fd,p->type," ",p->name);
     else
@@ -62,7 +102,7 @@ int getUserName(uid_t uid, struct info *p){
 
 void getMeta(const char* p_path, const char* mode,struct info *p){
     char path[MAX_NAME_SIZE];
-    memset(path,0,MAX_NAME_SIZE);
+    //memset(path,0,MAX_NAME_SIZE);
     strcpy(path,p_path);
     strcat(path,mode);
     struct stat buffer;
@@ -120,7 +160,6 @@ void readMem(char *pid, struct info *p){
         //address perms offset dev inode pathname
         char *line = NULL;
         char *token = NULL; 
-        char node[MAX_PID_SIZE];
         char name[MAX_NAME_SIZE];
         size_t len = 0;
         while(getline(&line,&len,fd)!=EOF){
@@ -164,7 +203,8 @@ void readMem(char *pid, struct info *p){
             
             if(strstr(name,"(deleted)") != NULL){
                 //remove "(deleted)" string
-                for(size_t i =strlen(name)-1;i>strlen(name)-20;--i){
+                size_t des = strlen(p->name) - 10;
+                for(size_t i =strlen(name)-1;i>des;--i){
                     name[i] = '\0';
                 }
                 strcpy(p->fd,"DEL");
@@ -198,14 +238,14 @@ void readFd(char *pid, struct info *p){
         
         while((dirread=readdir(dir))!=NULL){
             if(is_num(dirread->d_name)){   
-                char d[MAX_NAME_SIZE];
-                if(readlink(dirread->d_name,d,MAX_NAME_SIZE)==-1){
+                memset(p->name,0,MAX_NAME_SIZE);
+                if(readlink(dirread->d_name,p->name,MAX_NAME_SIZE)==-1){
                     //if(errno!=ENOENT)
                     error("readlink",errno);
                 }else{
-                    if(d[strlen(d)-1]=='\n')
-                        d[strlen(d)-1] = '\0';
-                    strcpy(p->name,d);
+                    if(p->name[strlen(p->name)-1]=='\n')
+                        p->name[strlen(p->name)-1] = '\0';
+                    
                     struct stat buffer;
                     if(stat(dirread->d_name,&buffer)<0){
                         error("stat",errno);
@@ -245,6 +285,17 @@ void readFd(char *pid, struct info *p){
                         }else{
                             error("unexceped W/R permission",errno);
                         }
+
+                        if(strstr(p->name,"(deleted)") != NULL){
+                            //remove "(deleted)" string
+                            size_t des = strlen(p->name) - 10;
+                            for(size_t i =strlen(p->name)-1;i>des;--i){
+                                p->name[i] = '\0';
+                            }
+                            strcpy(p->type,"unknown");
+                            p->inode = -1;
+                        }
+
                         print_pinfo(p);
                     }
                 }
@@ -298,19 +349,16 @@ void readInfo(char *pid, struct info *p){
 
 int main(int argc, char **argv){
     int opt;
-    char *command = NULL;
-    char *filename = NULL;
-    char *type = NULL;
     while ((opt = getopt(argc,argv,"c:t:f:")) != -1){
         switch(opt){
         case 'c':
-            command = optarg;
+            comm_regex = optarg;
             break;
         case 't':
-            type = optarg;
+            type_filter = optarg;
             break;
         case 'f':
-            filename = optarg;
+            file_regex = optarg;
             break;
         case '?':
         case ':':
@@ -323,8 +371,8 @@ int main(int argc, char **argv){
             fprintf(stderr,"Usage: %s [-c command] [-t type] [-f filename] name\n",argv[0]);
             exit(EXIT_FAILURE);
     }
-    if(type){
-        if(strcmp(type,"REG") && strcmp(type,"CHR") && strcmp(type,"DIR") && strcmp(type,"FIFO") && strcmp(type,"SOCK") && strcmp(type,"unknown")){
+    if(type_filter){
+        if(strcmp(type_filter,"REG") && strcmp(type_filter,"CHR") && strcmp(type_filter,"DIR") && strcmp(type_filter,"FIFO") && strcmp(type_filter,"SOCK") && strcmp(type_filter,"unknown")){
             fprintf(stderr,"Invalid TYPE option.\n");
             exit(EXIT_FAILURE);
         }

@@ -142,7 +142,8 @@ void getMeta(const char* p_path, const char* mode,struct info *p){
             strcpy(p->type,"unknown");
             strcpy(p->name,path);
         }else{
-            error("stat",errno);
+            return;
+            //error("stat",errno);
         }
     }
 }
@@ -248,7 +249,8 @@ void readFd(char *pid, struct info *p){
                     
                     struct stat buffer;
                     if(stat(dirread->d_name,&buffer)<0){
-                        error("stat",errno);
+                        //error("stat",errno);
+                        return;
                     }else{
                         p->inode = buffer.st_ino;
                         strcpy(p->fd,dirread->d_name);
@@ -275,12 +277,20 @@ void readFd(char *pid, struct info *p){
                                 strcpy(p->type,"unknown");
                                 break;
                         }
-
-                        if(access(dirread->d_name,R_OK & W_OK)==0){
+                        if(lstat(dirread->d_name,&buffer)==-1){
+                            return;
+                        }
+                        if(S_ISFIFO(buffer.st_mode)){
+                            printf("%d\n",p->pid);
+                            error("FIFO",-1);
+                        }
+                        bool r = (buffer.st_mode & S_IRUSR);
+                        bool w = (buffer.st_mode & S_IWUSR);
+                        if(r && w){
                             strcat(p->fd,"u");
-                        }else if(access(dirread->d_name,R_OK)==0){
+                        }else if(r){
                             strcat(p->fd,"r");
-                        }else if(access(dirread->d_name,W_OK)==0){
+                        }else if(w){
                             strcat(p->fd,"w");
                         }else{
                             error("unexceped W/R permission",errno);
@@ -312,14 +322,16 @@ void readInfo(char *pid, struct info *p){
     sprintf(dir,"%s%s%c","/proc/",pid,'/');
     chdir("/proc");
     if(stat(pid,&buffer)==-1){
-        error("stat",errno);
+        return;
+        //error("stat",errno);
     }else{
         getUserName(buffer.st_uid,p);
     }
     chdir(dir);
     if((fd=fopen("stat","r"))==NULL){
         //this error should be handled properly
-        error("fopen",errno);
+        return;
+        //error("fopen",errno);
     }else{
         //proc/[pid]/stat/
         //pid comm

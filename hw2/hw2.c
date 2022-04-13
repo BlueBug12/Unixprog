@@ -51,7 +51,6 @@ int main(int argc, char **argv){
         fprintf(stderr,"fork failed.\n");
         exit(EXIT_FAILURE);
     }else if(pid==0){//child process
-        fprintf(stderr,"start child process\n");
         if(execvp(argv[optind], command_buf)==-1){
             fprintf(stderr,"WRONG\n");
             return 0;
@@ -59,14 +58,10 @@ int main(int argc, char **argv){
         }
 
     }else{
-        //while(wait(NULL)<=0);
         while(waitpid(pid,NULL,WNOHANG)!=-1);
-
-        fprintf(stderr,"end child process\n");
-        /*
         if(fd>0){
             close(fd);
-        }*/
+        }
     }
 
     return 0;

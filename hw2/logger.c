@@ -20,7 +20,7 @@ void FD2name(int fd, char *name){
     char buf[BUFSIZE];
     memset(buf,0,BUFSIZE);
     memset(name,0,BUFSIZE);
-    sprintf(buf,"/proc/self/fd/%d",fd);
+    sprintf(buf,"/proc/%d/fd/%d",getpid(),fd);
     if(readlink(buf,name,BUFSIZE)==-1){
         dprintf(2,"readlink failed.\n");
         //exit(EXIT_FAILURE);
@@ -60,7 +60,7 @@ int chown(const char *path, uid_t owner, gid_t group){
     char r_path[BUFSIZE];
     getAbsPath(path,r_path);
     int result = chown_o(path,owner,group);
-    dprintf(getFD(),"[logger] %s(\"%s\", %o, %o) = %d\n",__func__,r_path,owner,group,result);
+    dprintf(getFD(),"[logger] %s(\"%s\", %u, %u) = %d\n",__func__,r_path,owner,group,result);
     return result;
 }
 

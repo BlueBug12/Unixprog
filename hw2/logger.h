@@ -1,6 +1,6 @@
 #ifndef LOGGER_H
 #define LOGGER_H
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -30,7 +30,7 @@ static int (*creat_o)(const char *,mode_t) = NULL;
 static int (*fclose_o)(FILE *) = NULL;
 static FILE *(*fopen_o)(const char *, const char *) = NULL;
 static size_t (*fread_o)(void *, size_t, size_t, FILE *) = NULL;
-static size_t (*fwrite_o)(void *, size_t, size_t, FILE *) = NULL;
+static size_t (*fwrite_o)(const void *, size_t, size_t, FILE *) = NULL;
 static int (*open_o)(const char *, int, ...) = NULL;
 static ssize_t (*read_o)(int, void *,size_t) = NULL;
 static int (*remove_o)(const char *) = NULL;

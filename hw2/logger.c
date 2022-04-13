@@ -2,14 +2,11 @@
 
 static int fd = -1;
 
-char* getAbsPath(const char* path){
-    char *r_path = realpath(path,NULL);
+void getAbsPath(const char* path, char *name){
+    char *r_path = realpath(path,name);
     if(r_path==NULL){
-        char str[9] = "untouched";
-        r_path = (char *)malloc(sizeof(char)*strlen(str));
-        strcpy(r_path,str);
+        strcpy(name,"untouched");
     }
-    return r_path;
 }
 
 int getFD(){
@@ -22,9 +19,10 @@ int getFD(){
 void FD2name(int fd, char *name){
     char buf[BUFSIZE];
     memset(buf,0,BUFSIZE);
+    memset(name,0,BUFSIZE);
     sprintf(buf,"/proc/self/fd/%d",fd);
     if(readlink(buf,name,BUFSIZE)==-1){
-        fprintf(stderr,"readlink failed.\n");
+        dprintf(2,"readlink failed.\n");
         //exit(EXIT_FAILURE);
     }
 }
@@ -40,34 +38,34 @@ void find_fptr(void** f, const char* f_name){
         if(handle != NULL){
             *f = dlsym(handle,f_name);
         }else{
-            fprintf(stderr,"dlopen failed.\n");
+            dprintf(2,"dlopen failed.\n");
             exit(EXIT_FAILURE);
         }
     }
 }
 
 int chmod(const char *path, mode_t mode){
-    find_fptr((void**)&chmod_o,"chmod");
+    find_fptr((void**)&chmod_o,__func__);
     CHECKER(chmod_o);
+    char r_path[BUFSIZE];
+    getAbsPath(path,r_path);
     int result = chmod_o(path,mode);
-    char *r_path = getAbsPath(path);
     dprintf(getFD(),"[logger] %s(\"%s\", %o) = %d\n",__func__,r_path,mode,result);
-    free(r_path);
     return result;
 }
 
 int chown(const char *path, uid_t owner, gid_t group){
-    find_fptr((void**)&chown_o,"chown");
+    find_fptr((void**)&chown_o,__func__);
     CHECKER(chown_o);
+    char r_path[BUFSIZE];
+    getAbsPath(path,r_path);
     int result = chown_o(path,owner,group);
-    char *r_path = getAbsPath(path);
-    dprintf(getFD(),"[logger] %s(\"%s\", %d, %d) = %d\n",__func__,r_path,owner,group,result);
-    free(r_path);
+    dprintf(getFD(),"[logger] %s(\"%s\", %o, %o) = %d\n",__func__,r_path,owner,group,result);
     return result;
 }
 
 int close(int fildes){
-    find_fptr((void**)&close_o,"close");
+    find_fptr((void**)&close_o,__func__);
     CHECKER(close_o);
     char name[BUFSIZE];
     FD2name(fildes,name);
@@ -79,21 +77,21 @@ int close(int fildes){
 }
 
 int creat(const char *path, mode_t mode){
-    find_fptr((void**)&creat_o,"creat");
+    find_fptr((void**)&creat_o,__func__);
     CHECKER(creat_o);
     int result = creat_o(path, mode);
-    char *r_path = getAbsPath(path);
+    char r_path[BUFSIZE];
+    getAbsPath(path,r_path);
     dprintf(getFD(),"[logger] %s(\"%s\", %o) = %d\n",__func__, r_path, mode, result);
-    free(r_path);
     return result;
 }
 
 int fclose(FILE *stream){
     find_fptr((void**)&fclose_o,__func__);
     CHECKER(fclose_o);
-    int result = fclose_o(stream);
     char name[BUFSIZE];
     FILE2name(stream,name);
+    int result = fclose_o(stream);
     dprintf(getFD(),"[logger] %s(\"%s\") = %d\n",__func__, name, result);
     return result;
 }
@@ -101,17 +99,37 @@ int fclose(FILE *stream){
 FILE *fopen(const char *pathname, const char *mode){
     find_fptr((void**)&fopen_o,__func__);
     CHECKER(fopen_o);
-    FILE *result = fopen_o(pathname, mode);
-    char *r_path = getAbsPath(pathname);
-    dprintf(getFD(),"[logger] %s(\"%s\", %o) = %p\n", __func__, mode, result);
-    free(r_path);
+    FILE *result = fopen_o(pathname, mode);  
+    char r_path[BUFSIZE];
+    getAbsPath(pathname,r_path);
+    dprintf(getFD(),"[logger] %s(\"%s\", \"%s\") = %p\n", __func__,r_path, mode, result);
     return result;
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream){
     find_fptr((void**)&fread_o,__func__);
     CHECKER(fread_o);
-    size_t result = fread(ptr, size, nmemb, stream);
+    size_t result = fread_o(ptr, size, nmemb, stream);
+    char name[BUFSIZE];
+    FILE2name(stream,name);
+    dprintf(getFD(),"[logger] %s(\"",__func__);
+    char * str = (char *)ptr;
+    
+    for(size_t i=0;i<nmemb && i<32 && i < result;++i){
+        if(isprint(str[i])){
+            dprintf(getFD(),"%c",str[i]);
+        }else{
+            dprintf(getFD(),".");
+        }
+    }
+    dprintf(getFD(),"\", %zu, %zu, \"%s\") = %zu\n", size, nmemb, name, result);
+    return result;
+}
+
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream){
+    find_fptr((void**)&fwrite_o,__func__);
+    CHECKER(fwrite_o);
+    size_t result = fwrite_o(ptr, size, nmemb, stream);
     char name[BUFSIZE];
     FILE2name(stream,name);
     dprintf(getFD(),"[logger] %s(\"",__func__);
@@ -126,43 +144,28 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream){
     dprintf(getFD(),"\", %zu, %zu, \"%s\") = %zu\n", size, nmemb, name, result);
     return result;
 }
-/*
-size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream){
-    find_fptr((void**)&fwrite_o,"fwrite");
-    CHECKER(fwrite_o);
-    size_t result = fwrite(ptr, size, nmemb, stream);
-    char name[BUFSIZE];
-    FILE2name(stream,name);
-    dprintf(getFD(),"[logger] %s(\"",__func__);
-    char * str = (char *)ptr;
-    for(size_t i=0;i<nmemb && i<32 && i < result;++i){
-        if(isprint(str[i])){
-            dprintf(getFD(),"%c",str[i]);
-        }else{
-            dprintf(getFD(),".");
-        }
-    }
-    dprintf(getFD(),"\", %zu, %zu, \"%s\") = %zu\n", size, nmemb, name, result);
-    return result;
-}*/
+
 int open(const char *pathname, int flags,...){
     find_fptr((void**)&open_o,__func__);
     CHECKER(open_o);
     int result;
-    mode_t mode;
-    char *r_path = getAbsPath(pathname);
+    mode_t mode = 0;
+
     if(__OPEN_NEEDS_MODE(flags)){
         va_list arg;
         va_start (arg,flags);
         mode = va_arg(arg, int);
         va_end(arg);
-        result = open_o(pathname,flags,mode);
-        dprintf(getFD(),"[logger] %s(\"%s\", %d, %o) = %d\n", pathname, flags, mode, result);
-    }else{
+    }
+    /*
+    else{
         result = open_o(pathname,flags);
         dprintf(getFD(),"[logger] %s(\"%s\", %d) = %d\n", pathname, flags, result);
-    }
-    free(r_path);
+    }*/
+    result = open_o(pathname,flags,mode);
+    char r_path[BUFSIZE]; 
+    getAbsPath(pathname,r_path);
+    dprintf(getFD(),"[logger] %s(\"%s\", %o, %o) = %d\n",__func__, r_path, flags, mode, result);
     return result;
 }
 ssize_t read(int fildes, void *buf, size_t nbyte){
@@ -188,25 +191,25 @@ ssize_t read(int fildes, void *buf, size_t nbyte){
 int remove(const char *pathname){
     find_fptr((void**)&remove_o,__func__);
     CHECKER(remove_o);
-    int result = remove_o(pathname);
-    char * r_path = getAbsPath(pathname);
+    char r_path[BUFSIZE];
+    getAbsPath(pathname, r_path);
+    int result = remove_o(pathname); 
 
     dprintf(getFD(),"[logger] %s(\"%s\") = %d\n",__func__, r_path, result);
-    free(r_path);
     return result;
 }
 
 int rename(const char *old, const char *new){
     find_fptr((void**)&rename_o,__func__);
     CHECKER(rename_o);
+    char r_old[BUFSIZE];
+    getAbsPath(old,r_old);
     int result = rename_o(old, new);
-    char *r_old = getAbsPath(old);
-    char *r_new = getAbsPath(new);
+    char r_new[BUFSIZE];
+    getAbsPath(new,r_new);
 
     dprintf(getFD(),"[logger] %s(\"%s\", \"%s\") = %d\n", __func__, r_old, r_new, result);
 
-    free(r_old);
-    free(r_new);
     return result;
 }
 

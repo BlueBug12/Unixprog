@@ -90,6 +90,16 @@ int creat(const char *path, mode_t mode){
     return result;
 }
 
+int creat64(const char *path, mode_t mode){
+    find_fptr((void**)&creat64_o,__func__);
+    CHECKER(creat64_o);
+    int result = creat64_o(path, mode);
+    char r_path[BUFSIZE];
+    getAbsPath(path,r_path);
+    dprintf(getFD(),"[logger] %s(\"%s\", %o) = %d\n",__func__, r_path, mode, result);
+    return result;
+}
+
 int fclose(FILE *stream){
     find_fptr((void**)&fclose_o,__func__);
     CHECKER(fclose_o);
@@ -107,6 +117,16 @@ FILE *fopen(const char *pathname, const char *mode){
     find_fptr((void**)&fopen_o,__func__);
     CHECKER(fopen_o);
     FILE *result = fopen_o(pathname, mode);  
+    char r_path[BUFSIZE];
+    getAbsPath(pathname,r_path);
+    dprintf(getFD(),"[logger] %s(\"%s\", \"%s\") = %p\n", __func__,r_path, mode, result);
+    return result;
+}
+
+FILE *fopen64(const char *pathname, const char *mode){
+    find_fptr((void**)&fopen64_o,__func__);
+    CHECKER(fopen64_o);
+    FILE *result = fopen64_o(pathname, mode);  
     char r_path[BUFSIZE];
     getAbsPath(pathname,r_path);
     dprintf(getFD(),"[logger] %s(\"%s\", \"%s\") = %p\n", __func__,r_path, mode, result);
@@ -170,6 +190,26 @@ int open(const char *pathname, int flags,...){
     dprintf(getFD(),"[logger] %s(\"%s\", %o, %o) = %d\n",__func__, r_path, flags, mode, result);
     return result;
 }
+
+int open64(const char *pathname, int flags,...){
+    find_fptr((void**)&open64_o,__func__);
+    CHECKER(open64_o);
+    int result;
+    mode_t mode = 0;
+
+    if(__OPEN_NEEDS_MODE(flags)){
+        va_list arg;
+        va_start (arg,flags);
+        mode = va_arg(arg, int);
+        va_end(arg);
+    }
+    result = open64_o(pathname,flags,mode);
+    char r_path[BUFSIZE]; 
+    getAbsPath(pathname,r_path);
+    dprintf(getFD(),"[logger] %s(\"%s\", %o, %o) = %d\n",__func__, r_path, flags, mode, result);
+    return result;
+}
+
 ssize_t read(int fildes, void *buf, size_t nbyte){
     find_fptr((void**)&read_o,__func__);
     CHECKER(read_o);
@@ -219,6 +259,14 @@ FILE *tmpfile(void){
     find_fptr((void**)&tmpfile_o,__func__);
     CHECKER(tmpfile_o);
     FILE * result = tmpfile_o();
+    dprintf(getFD(),"[logger] %s() = %p\n", __func__, result);
+    return result;
+}
+
+FILE *tmpfile64(void){
+    find_fptr((void**)&tmpfile64_o,__func__);
+    CHECKER(tmpfile64_o);
+    FILE * result = tmpfile64_o();
     dprintf(getFD(),"[logger] %s() = %p\n", __func__, result);
     return result;
 }

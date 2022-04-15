@@ -77,6 +77,7 @@ int close(int fildes){
         result = close_o(fildes);
     }
     dprintf(getFD(),"[logger] %s(\"%s\") = %d\n",__func__,name,result);
+    return result;
 }
 
 int creat(const char *path, mode_t mode){
@@ -94,7 +95,10 @@ int fclose(FILE *stream){
     CHECKER(fclose_o);
     char name[BUFSIZE];
     FILE2name(stream,name);
-    int result = fclose_o(stream);
+    int result = 0;
+    if(stream != stderr){
+        result = fclose_o(stream);
+    }
     dprintf(getFD(),"[logger] %s(\"%s\") = %d\n",__func__, name, result);
     return result;
 }

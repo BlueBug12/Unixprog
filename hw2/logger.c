@@ -21,10 +21,13 @@ void FD2name(int fd, char *name){
     memset(buf,0,BUFSIZE);
     memset(name,0,BUFSIZE);
     sprintf(buf,"/proc/%d/fd/%d",getpid(),fd);
+    
+    readlink(buf,name,BUFSIZE)==-1;
+    /*
     if(readlink(buf,name,BUFSIZE)==-1){
         dprintf(2,"readlink failed.\n");
-        //exit(EXIT_FAILURE);
-    }
+        exit(EXIT_FAILURE);
+    }*/
 }
 
 void FILE2name(FILE* stream, char* name){
@@ -157,11 +160,6 @@ int open(const char *pathname, int flags,...){
         mode = va_arg(arg, int);
         va_end(arg);
     }
-    /*
-    else{
-        result = open_o(pathname,flags);
-        dprintf(getFD(),"[logger] %s(\"%s\", %d) = %d\n", pathname, flags, result);
-    }*/
     result = open_o(pathname,flags,mode);
     char r_path[BUFSIZE]; 
     getAbsPath(pathname,r_path);

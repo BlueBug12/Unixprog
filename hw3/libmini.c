@@ -193,14 +193,43 @@ int sigemptyset(sigset_t *set) {
     return 0;
 }
 
-int sigaddset(sigset_t *set, int signo) {
-    if(signo <= 0 || signo >= _NSIG){
+int sigfillset(sigset_t *set){
+    char *ptr = (char *)ptr;
+    size_t len = sizeof(set);
+    while(len--){
+        *ptr++ = 0xff;
+    }
+    errno = 0;
+    return 0;
+}
+
+int sigaddset(sigset_t *set, int signum) {
+    if(signum <= 0 || signum >= _NSIG){
         errno = EINVAL;
         return -1;
     }
     errno = 0;
-    set->sig[0] |= sigmask(signo);
+    set->sig[0] |= sigmask(signum);
     return 0;
+}
+
+int sigdelset(sigset_t *set, int signum){
+    if(signum <= 0 || signum >= _NSIG){
+        errno = EINVAL;
+        return -1;
+    }
+    errno = 0;
+    set->sig[0] &= ~sigmask(signum);
+    return 0;
+}
+
+int sigismember(const sigset_t *set, int signum){
+    if(signum <= 0 || signum >= _NSIG){
+        errno = EINVAL;
+        return -1;
+    }
+    errno = 0;
+    return (set->sig[0] & sigmask(signum))!= 0;
 }
 
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset){
@@ -211,15 +240,6 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset){
 int sigpending(sigset_t *set){
     long ret = sys_rt_sigpending(set, sizeof(sigset_t));
     WRAPPER_RETval(int);
-}
-
-int sigismember(const sigset_t *set, int signo){
-    if(signo <= 0 || signo >= _NSIG){
-        errno = EINVAL;
-        return -1;
-    }
-    errno = 0;
-    return set->sig[0] & sigmask(signo);
 }
 
 sighandler_t signal(int signum, sighandler_t handler){

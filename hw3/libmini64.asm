@@ -24,6 +24,7 @@ extern  errno
         gensys   9, mmap
         gensys  10, mprotect
         gensys  11, munmap
+        gensys  13, rt_sigaction
         gensys  14, rt_sigprocmask
         gensys  22, pipe
         gensys  32, dup
@@ -54,6 +55,11 @@ extern  errno
         gensys 108, getegid
         gensys 127, rt_sigpending
 
+        global __myrt:function
+__myrt:
+        mov rax, 15
+        syscall
+        ret
         global open:function
 open:
         call    sys_open
@@ -102,3 +108,55 @@ sleep_failed:
 sleep_quit:
         add     rsp, 32
         ret
+        global setjmp:function
+setjmp: ;https://elixir.bootlin.com/linux/v5.14-rc1/source/arch/x86/um/setjmp_64.S
+    mov [rdi+8*0], rbx ; jmp_buf[0]->reg[0]
+    mov [rdi+8*1], rsp ; jmp_buf[0]->reg[1] (post-return)
+    mov [rdi+8*2], rbp ; jmp_buf[0]->reg[2]
+    mov [rdi+8*3], r12 ; jmp_buf[0]->reg[3]
+    mov [rdi+8*4], r13 ; jmp_buf[0]->reg[4]
+    mov [rdi+8*5], r14 ; jmp_buf[0]->reg[5]
+    mov [rdi+8*6], r15 ; jmp_buf[0]->reg[6]
+    push qword [rsp]
+    pop qword [rdi+8*7];value stored in return address
+    push rdi ;jmp_buf env
+	push rsi 
+	push rdx 
+	push rcx 
+    xor rdi, rdi        ; how = SIG_BLOCK(doesn't matter)
+    xor rsi, rsi        ; set = NULL
+    lea rdx, [rdi+8*8]  ; oset pointer
+    mov rcx, 8          ; sigsetsize = 8
+    call sys_rt_sigprocmask ;to get current mask
+    pop rcx
+    pop rdx
+    pop rsi
+    pop rdi
+    xor rax, rax
+    ret
+    
+    global longjmp:function
+longjmp:
+    mov rbx, [rdi+8*0] ; jmp_buf[0]->reg[0]
+    mov rsp, [rdi+8*1] ; jmp_buf[0]->reg[1] (post-return)
+    mov rbp, [rdi+8*2] ; jmp_buf[0]->reg[2]
+    mov r12, [rdi+8*3] ; jmp_buf[0]->reg[3]
+    mov r13, [rdi+8*4] ; jmp_buf[0]->reg[4]
+    mov r14, [rdi+8*5] ; jmp_buf[0]->reg[5]
+    mov r15, [rdi+8*6] ; jmp_buf[0]->reg[6]
+    push qword [rdi+8*7];value stored in return address
+    pop  qword [rsp]
+    push rdi ;jmp_buf env
+	push rsi ;int savesigs
+	push rdx 
+    mov rdi, 2          ;how = SIG_SETMASK
+    lea rsi, [rdi+8*8]  ;set pointer
+    xor rdx, rdx;       ;oset = NULL
+    call sys_rt_sigprocmask ; set mask
+    pop rdx
+    pop rsi
+    pop rdi
+    mov rax, rsi
+    ret
+
+

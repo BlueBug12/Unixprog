@@ -222,6 +222,29 @@ int sigismember(const sigset_t *set, int signo){
     return set->sig[0] & sigmask(signo);
 }
 
+sighandler_t signal(int signum, sighandler_t handler){
+    struct sigaction act, oact;
+    if (signum <= 0 || signum >= _NSIG) {
+        errno = EINVAL;
+        return SIG_ERR;
+    }
+    act.sa_handler = handler;
+    sigemptyset(&act.sa_mask);
+    sigaddset(&act.sa_mask, signum);
+    act.sa_flags = SA_RESTART;
+    if (sigaction(signum, &act, &oact) < 0)
+        return SIG_ERR;
+    return oact.sa_handler;   
+}
+
+int sigaction(int signum, struct sigaction *act, struct sigaction *oldact){
+	act->sa_flags |= SA_RESTORER;
+	act->sa_restorer = __myrt;
+	long ret = sys_rt_sigaction(signum, act, oldact, sizeof(sigset_t));
+	WRAPPER_RETval(int);
+}
+
+
 #define PERRMSG_MIN     0
 #define PERRMSG_MAX     34
 

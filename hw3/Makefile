@@ -24,5 +24,9 @@ jmp1: jmp1.c libmini.so
 	gcc -o jmp1.o -c -g -Wall -fno-stack-protector -nostdlib -I. -I.. -DUSEMINI jmp1.c
 	ld -m elf_x86_64 --dynamic-linker /lib64/ld-linux-x86-64.so.2 -o jmp1 jmp1.o start.o -L. -L.. -lmini
 
+sig1: sig1.c libmini.so
+	gcc -o sig1.o -c -g -Wall -fno-stack-protector -nostdlib -I. -I.. -DUSEMINI sig1.c
+	ld -m elf_x86_64 --dynamic-linker /lib64/ld-linux-x86-64.so.2 -o $@ sig1.o start.o -L. -L.. -lmini
+
 clean:
-	rm -f *.s *.o *.so write1 alarm1 alarm2 alarm3 jmp1
+	rm -f *.s *.o *.so write1 alarm1 alarm2 alarm3 jmp1 sig1

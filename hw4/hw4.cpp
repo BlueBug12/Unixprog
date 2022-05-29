@@ -60,18 +60,26 @@ int main(int argc, char *argv[]){
                 unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
                 sdb.set_break(addr);
             }else{
-                DEBUG("no addr is given");
+                DEBUG("no addr is given.");
             }
         }else if(strcmp(cmd,"cont")    == 0 || strcmp(cmd,"c") == 0){
         }else if(strcmp(cmd,"delete")  == 0){
         }else if(strcmp(cmd,"disasm")  == 0 || strcmp(cmd,"d") == 0){
+            if(cmd_tokens.size()>=1){
+                unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
+                sdb.disasm(addr,ASM_LINES);
+            }else{
+                DEBUG("no addr is given.");
+            }
         }else if(strcmp(cmd,"dump")    == 0 || strcmp(cmd,"x") == 0){
         }else if(strcmp(cmd,"exit")    == 0 || strcmp(cmd,"q") == 0){
         }else if(strcmp(cmd,"get")     == 0 || strcmp(cmd,"g") == 0){
         }else if(strcmp(cmd,"getregs") == 0){
+            sdb.getregs();
         }else if(strcmp(cmd,"help")    == 0 || strcmp(cmd,"h") == 0){
             sdb.help();
         }else if(strcmp(cmd,"list")    == 0 || strcmp(cmd,"l") == 0){
+            sdb.list();
         }else if(strcmp(cmd,"load")    == 0){
             if(cmd_tokens.size() >= 1)
                 sdb.load(cmd_tokens[0]);
@@ -82,7 +90,7 @@ int main(int argc, char *argv[]){
         }else if(strcmp(cmd,"set")     == 0 || strcmp(cmd,"s") == 0){
         }else if(strcmp(cmd,"si")      == 0){
         }else if(strcmp(cmd,"start")   == 0){
-               
+            sdb.start();       
         }else{
             //PRINT("Unknown command.");
         }

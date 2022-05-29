@@ -63,7 +63,13 @@ int main(int argc, char *argv[]){
                 DEBUG("no addr is given.");
             }
         }else if(strcmp(cmd,"cont")    == 0 || strcmp(cmd,"c") == 0){
+            sdb.cont();
         }else if(strcmp(cmd,"delete")  == 0){
+            if(cmd_tokens.size()>=1){
+                sdb.del(atoi(cmd_tokens[0]));
+            }else{
+                DEBUG("no addr is given.");
+            }
         }else if(strcmp(cmd,"disasm")  == 0 || strcmp(cmd,"d") == 0){
             if(cmd_tokens.size()>=1){
                 unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
@@ -72,6 +78,13 @@ int main(int argc, char *argv[]){
                 DEBUG("no addr is given.");
             }
         }else if(strcmp(cmd,"dump")    == 0 || strcmp(cmd,"x") == 0){
+            if(cmd_tokens.size()>=1){
+                unsigned long long addr = strtol(cmd_tokens[0],NULL,16);
+                //unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
+                sdb.dump(addr);
+            }else{
+                DEBUG("no addr is given.");
+            }
         }else if(strcmp(cmd,"exit")    == 0 || strcmp(cmd,"q") == 0){
         }else if(strcmp(cmd,"get")     == 0 || strcmp(cmd,"g") == 0){
         }else if(strcmp(cmd,"getregs") == 0){

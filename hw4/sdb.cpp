@@ -3,7 +3,6 @@
 SDB::SDB(){
     state = NOT_LOADED;
     pid = 0;
-    program_name = NULL;
 }
 SDB::~SDB(){}
 
@@ -48,8 +47,8 @@ void SDB::help(){
 void SDB::start(){
     if(state!=LOADED){
         DEBUG("state must be LOADED");
-    return;
-}
+        return;
+    }
     if((pid = fork())<0){
         ERROR("fork child-process failed");
         return;   
@@ -59,6 +58,7 @@ void SDB::start(){
             ERROR("ptrace: TRACEME failed.");
         }
         char *argv_child[] = {program_name,NULL};
+        PRINT(program_name);
         if(execvp(program_name,argv_child)){
             ERROR("execvp failed.");
         }
@@ -106,6 +106,7 @@ void SDB::load(char * file_name){
     if(state!=NOT_LOADED){
         DEBUG("state must be NOT LOADED");
     }else{
+        strcpy(program_name,file_name);
         FILE *fp = fopen(file_name,"rb");
         char buf[128];
         if(fp==NULL){
@@ -148,6 +149,13 @@ void SDB::cont(){
     if(state!=RUNNING){
         DEBUG("state must be RUNNING");
         return;
+    }
+    if(ptrace(PTRACE_CONT,pid,0,0) < 0){
+        ERROR("ptrace: PTRACE_CONT failed");
+    }
+    int status;
+    if(waitpid(pid, &status, 0) < 0){
+        ERROR("waitpid failed");
     }
 
 }
@@ -209,4 +217,83 @@ void SDB::disasm(unsigned long addr, size_t len){
         DEBUG("the address is out of the range of the text segment");
     }
     cs_close(&handle);
+}
+
+void SDB::del(int id){
+    if(state!=RUNNING){
+        DEBUG("state must be RUNNING");
+        return;
+    }
+    if(id < 0 || (size_t)id >= addr_list.size()){
+        DEBUG("the address is out of the range of the text segment");
+    }else{
+        auto it = addr_list.begin();
+        std::advance(it,id);
+        if(ptrace(PTRACE_POKETEXT, pid, it->first, it->second)!=0){
+            ERROR("ptrace: PTRACE_POKETEXT failed");
+        }
+        addr_list.erase(it);
+        char buf[32];
+        sprintf(buf, "breakpoint %d deleted.", id);
+        DEBUG(buf);
+    }
+}
+
+void SDB::dump(unsigned long long addr){
+    if(state!=RUNNING){
+        DEBUG("state must be RUNNING");
+        return;
+    }
+    if(!in_text(addr)){
+        DEBUG("the address is out of the range of the text segment");
+        return;
+    }
+    
+    unsigned char data[DUMP_BYTES];
+    unsigned char * dataptr = data;
+    //unsigned char * data_ptr = data;
+    for(int i = 0; i < 5; i++) {
+        printf("      %llx: ", addr);
+        for(int j = 0; j < 16; j ++) {
+            *dataptr = ptrace(PTRACE_PEEKDATA, pid, addr, NULL);
+            addr = addr + 1;
+            dataptr ++;
+            printf("%02x ", data[16 * i + j]);
+        }
+        
+        printf("|"); 
+        for(int j = 0; j < 16; j ++) {
+            char c = data[16*i+j];
+            if(isprint(c) != 0) {
+                printf("%c", c);
+            }else {
+                printf(".");
+            }
+        }
+        printf("|"); 
+        printf("\n");
+    }
+
+    /*
+    for(int i =0;i<DUMP_BYTES/16;++i){
+        fprintf(stderr,"      0x%0lx: ",addr);
+        *data_ptr = ptrace(PTRACE_PEEKTEXT,pid,addr,0);
+        data_ptr += 8;
+        *data_ptr = ptrace(PTRACE_PEEKTEXT,pid,addr+8,0);
+        for(int j = 0;j < 16;++j){
+            fprintf(stderr,"%02hhx ", data[i*16+j]);
+        }
+        fprintf(stderr," |");
+
+        for(int j = 0;j < 16;++j){
+            char c = data[i*16+j];
+            if(isprint(c) != 0){
+                fprintf(stderr,"%c",c);
+            }else{
+                fprintf(stderr,".");
+            }
+        }
+        fprintf(stderr,"|\n");
+        addr+=16;
+    }*/
 }

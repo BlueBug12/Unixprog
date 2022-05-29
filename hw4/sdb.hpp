@@ -13,8 +13,7 @@
 #include <map>
 #include <vector>
 #include <fstream>
-#include <iostream>
-#include <iomanip>
+#include <iterator>
 
 #define MAX_TOKEN_NUM 10
 #define ERROR(message) fprintf(stderr,"Error: %s\n",message); exit(EXIT_FAILURE)
@@ -25,6 +24,7 @@
 #define LOADED 1
 #define RUNNING 2
 #define ASM_LINES 10
+#define DUMP_BYTES 80
 
 /*
  * echo $LD_LIBRARY_PATH
@@ -46,6 +46,8 @@ public:
     void cont();
     void getregs();
     void disasm(unsigned long addr, size_t len);
+    void del(int id);
+    void dump(unsigned long long addr);
     bool in_text(unsigned long addr);
 
 private:
@@ -55,7 +57,7 @@ private:
     int state;
     size_t code_size;
     pid_t pid;
-    char * program_name;
+    char program_name[64];
     char * code_text;
 };
 

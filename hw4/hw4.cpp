@@ -79,8 +79,7 @@ int main(int argc, char *argv[]){
             }
         }else if(strcmp(cmd,"dump")    == 0 || strcmp(cmd,"x") == 0){
             if(cmd_tokens.size()>=1){
-                unsigned long long addr = strtol(cmd_tokens[0],NULL,16);
-                //unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
+                unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
                 sdb.dump(addr);
             }else{
                 DEBUG("no addr is given.");

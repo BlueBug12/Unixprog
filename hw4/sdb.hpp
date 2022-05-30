@@ -47,7 +47,7 @@ public:
     void getregs();
     void disasm(unsigned long addr, size_t len);
     void del(int id);
-    void dump(unsigned long long addr);
+    void dump(unsigned long addr);
     bool in_text(unsigned long addr);
 
 private:

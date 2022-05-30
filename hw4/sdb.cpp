@@ -58,7 +58,6 @@ void SDB::start(){
             ERROR("ptrace: TRACEME failed.");
         }
         char *argv_child[] = {program_name,NULL};
-        PRINT(program_name);
         if(execvp(program_name,argv_child)){
             ERROR("execvp failed.");
         }
@@ -239,7 +238,7 @@ void SDB::del(int id){
     }
 }
 
-void SDB::dump(unsigned long long addr){
+void SDB::dump(unsigned long addr){
     if(state!=RUNNING){
         DEBUG("state must be RUNNING");
         return;
@@ -249,44 +248,25 @@ void SDB::dump(unsigned long long addr){
         return;
     }
     
-    unsigned char data[DUMP_BYTES];
-    unsigned char * dataptr = data;
-    //unsigned char * data_ptr = data;
-    for(int i = 0; i < 5; i++) {
-        printf("      %llx: ", addr);
-        for(int j = 0; j < 16; j ++) {
-            *dataptr = ptrace(PTRACE_PEEKDATA, pid, addr, NULL);
-            addr = addr + 1;
-            dataptr ++;
-            printf("%02x ", data[16 * i + j]);
-        }
-        
-        printf("|"); 
-        for(int j = 0; j < 16; j ++) {
-            char c = data[16*i+j];
-            if(isprint(c) != 0) {
-                printf("%c", c);
-            }else {
-                printf(".");
-            }
-        }
-        printf("|"); 
-        printf("\n");
-    }
-
-    /*
+    unsigned char data[16];
+    unsigned long text;
     for(int i =0;i<DUMP_BYTES/16;++i){
-        fprintf(stderr,"      0x%0lx: ",addr);
-        *data_ptr = ptrace(PTRACE_PEEKTEXT,pid,addr,0);
-        data_ptr += 8;
-        *data_ptr = ptrace(PTRACE_PEEKTEXT,pid,addr+8,0);
+        fprintf(stderr,"      %0lx: ",addr);
+        text = ptrace(PTRACE_PEEKTEXT,pid,addr,0);
+        for(int j=0;j<8;++j){
+            data[j] = ((char *)&text)[j];
+        }
+        text = ptrace(PTRACE_PEEKTEXT,pid,addr+8,0);
+        for(int j=0;j<8;++j){
+            data[j+8] = ((char *)&text)[j];
+        }
         for(int j = 0;j < 16;++j){
-            fprintf(stderr,"%02hhx ", data[i*16+j]);
+            fprintf(stderr,"%02hhx ", data[j]);
         }
         fprintf(stderr," |");
 
         for(int j = 0;j < 16;++j){
-            char c = data[i*16+j];
+            char c = data[j];
             if(isprint(c) != 0){
                 fprintf(stderr,"%c",c);
             }else{
@@ -295,5 +275,5 @@ void SDB::dump(unsigned long long addr){
         }
         fprintf(stderr,"|\n");
         addr+=16;
-    }*/
+    }
 }

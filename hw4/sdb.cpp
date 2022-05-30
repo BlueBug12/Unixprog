@@ -2,12 +2,20 @@
 
 SDB::SDB(){
     state = NOT_LOADED;
+    code_text = NULL;
+    code_size = 0;
     pid = 0;
 }
 SDB::~SDB(){}
 
 
-void SDB::terminate(){
+void SDB::quit(){
+    if(pid>0){
+        kill(pid, SIGTERM);
+    }
+    if(code_text){
+        free(code_text);
+    }
     exit(0);
 }
 
@@ -16,13 +24,13 @@ bool SDB::in_text(const unsigned long addr){
 }
 
 void SDB::get_code(char * file_name){
-    std::ifstream fin(file_name, std::ios::in|std::ios::binary);
-    fin.seekg(0,fin.end);
-    code_size = fin.tellg();
-    fin.seekg(0,fin.beg);
+    struct stat st;
+    stat(file_name, &st);
+    code_size = st.st_size;
     code_text = (char*)malloc(sizeof(char)*code_size);
-    fin.read(code_text,code_size);
-    fin.close();
+    FILE * fp = fopen(file_name,"r");
+    fread(code_text,sizeof(char),code_size,fp);
+    fclose(fp);
 }
 
 void SDB::help(){
@@ -152,11 +160,53 @@ void SDB::cont(){
     if(ptrace(PTRACE_CONT,pid,0,0) < 0){
         ERROR("ptrace: PTRACE_CONT failed");
     }
+    check_process();
+}
+
+void SDB::check_process(){
     int status;
     if(waitpid(pid, &status, 0) < 0){
         ERROR("waitpid failed");
     }
-
+    //check the child process exit normally
+    if(WIFEXITED(status)){
+        char buf[128];
+        if(WIFSIGNALED(status)){
+            sprintf(buf,"child process %d terminated by signal (code %d)", pid, WTERMSIG(status));
+        }else{
+            sprintf(buf,"child process %d terminated normally (code %d)", pid, status);
+        } 
+        DEBUG(buf);
+        pid = 0;
+        state = LOADED;
+    }else if(WIFSTOPPED(status)){
+        if(WSTOPSIG(status)==SIGTRAP){            
+            struct user_regs_struct regs;
+            if(ptrace(PTRACE_GETREGS, pid, 0, &regs)!=0){
+                ERROR("ptrace: PTRACE_GETREGS failed");
+            }
+            std::map<unsigned long, long>::iterator it;
+            if((it=addr_list.find(regs.rip-1))!=addr_list.end()){
+                fprintf(stderr,"** breakpoint at @");
+                disasm(it->first,1);
+                //recover original code
+                if(ptrace(PTRACE_POKETEXT, pid, it->first, it->second) < 0){
+                    ERROR("ptrace: PTRACE_POKETEXT failed");
+                }
+                //recover program counter
+                --regs.rip;
+                if(ptrace(PTRACE_SETREGS, pid, 0, &regs) != 0){
+                    ERROR("ptrace: PTRACE_SETREGS failed");
+                }
+            }else{
+                //ERROR("hit no addr??");
+            }
+        }    
+    }else{
+        char buf[128];
+        sprintf(buf,"child process %d terminated by signal (code %d)", pid, WTERMSIG(status));
+        DEBUG(buf);
+    }
 }
 
 void SDB::getregs(){
@@ -202,7 +252,7 @@ void SDB::disasm(unsigned long addr, size_t len){
                 DEBUG("the address is out of the range of the text segment");
                 break;
             }
-            fprintf(stderr,"0x%0lx: ", insn[i].address);
+            fprintf(stderr,"      %0lx: ", insn[i].address);
             for (size_t j = 0; j < 10; j++) {
                 if (j < insn[i].size) {
                     fprintf(stderr,"%02hhx ", insn[i].bytes[j]);
@@ -276,4 +326,131 @@ void SDB::dump(unsigned long addr){
         fprintf(stderr,"|\n");
         addr+=16;
     }
+}
+
+void SDB::get(char * reg_name){
+    if(state!=RUNNING){
+        DEBUG("state must be RUNNING");
+        return;
+    }
+
+    struct user_regs_struct regs;
+    unsigned long value;
+    if(ptrace(PTRACE_GETREGS, pid, 0, &regs)<0){
+        ERROR("ptrace: PTRACE_GETREGS failed");
+    }
+    if(strcmp(reg_name,"rax")==0){
+        value = regs.rax;
+    }else if(strcmp(reg_name,"rbx")==0){
+        value = regs.rbx;
+    }else if(strcmp(reg_name,"rcx")==0){
+        value = regs.rcx;
+    }else if(strcmp(reg_name,"rdx")==0){
+        value = regs.rdx;
+    }else if(strcmp(reg_name,"r8")==0){
+        value = regs.r8;
+    }else if(strcmp(reg_name,"r9")==0){
+        value = regs.r9;
+    }else if(strcmp(reg_name,"r10")==0){
+        value = regs.r10;
+    }else if(strcmp(reg_name,"r11")==0){
+        value = regs.r11;
+    }else if(strcmp(reg_name,"r12")==0){
+        value = regs.r12;
+    }else if(strcmp(reg_name,"r13")==0){
+        value = regs.r13;
+    }else if(strcmp(reg_name,"r14")==0){
+        value = regs.r14;
+    }else if(strcmp(reg_name,"r15")==0){
+        value = regs.r15;
+    }else if(strcmp(reg_name,"rdi")==0){
+        value = regs.rdi;
+    }else if(strcmp(reg_name,"rbp")==0){
+        value = regs.rbp;
+    }else if(strcmp(reg_name,"rsp")==0){
+        value = regs.rsp;
+    }else if(strcmp(reg_name,"rip")==0){
+        value = regs.rip;
+    }else if(strcmp(reg_name,"flags")==0){
+        value = regs.eflags;
+    }else{
+        //DEBUG("no reg name matched");
+        //do nothing??
+        return;
+    }
+    fprintf(stderr,"%s = %lu (0x%lx)\n", reg_name, value, value);
+}
+
+void SDB::run(){
+    if(state == RUNNING){
+        char buf[128];
+        sprintf(buf,"program %s is already running", program_name);
+        DEBUG(buf);
+        cont();
+    }else if(state == LOADED){
+        start();
+        cont();
+    }else{
+        DEBUG("state must be LOADED or RUNNING");
+    }
+}
+
+void SDB::set(char * reg_name, unsigned long val){
+    struct user_regs_struct regs;
+    if(ptrace(PTRACE_GETREGS, pid, 0, &regs)!=0){
+        ERROR("ptrace: PTRACE_GETREGS failed");
+    }
+    if(strcmp(reg_name,"rax")==0){
+        regs.rax = val;
+    }else if(strcmp(reg_name,"rbx")==0){
+        regs.rbx = val;
+    }else if(strcmp(reg_name,"rcx")==0){
+        regs.rcx = val;
+    }else if(strcmp(reg_name,"rdx")==0){
+        regs.rdx = val;
+    }else if(strcmp(reg_name,"r8")==0){
+        regs.r8 = val;
+    }else if(strcmp(reg_name,"r9")==0){
+        regs.r9 = val;
+    }else if(strcmp(reg_name,"r10")==0){
+        regs.r10 = val;
+    }else if(strcmp(reg_name,"r11")==0){
+        regs.r11 = val;
+    }else if(strcmp(reg_name,"r12")==0){
+        regs.r12 = val;
+    }else if(strcmp(reg_name,"r13")==0){
+        regs.r13 = val;
+    }else if(strcmp(reg_name,"r14")==0){
+        regs.r14 = val;
+    }else if(strcmp(reg_name,"r15")==0){
+        regs.r15 = val;
+    }else if(strcmp(reg_name,"rdi")==0){
+        regs.rdi = val;
+    }else if(strcmp(reg_name,"rbp")==0){
+        regs.rbp = val;
+    }else if(strcmp(reg_name,"rsp")==0){
+        regs.rsp = val;
+    }else if(strcmp(reg_name,"rip")==0){
+        regs.rip = val;
+    }else if(strcmp(reg_name,"flags")==0){
+        regs.eflags = val;
+    }else{
+        //DEBUG("no reg name matched");
+        //do nothing??
+        return;
+    }
+    if(ptrace(PTRACE_SETREGS, pid, 0, &regs) != 0){
+        ERROR("ptrace: PTRACE_SETREGS failed");
+    }
+}
+
+void SDB::si(){
+    if(state!=RUNNING){
+        DEBUG("state must be RUNNING");
+        return;
+    }
+    if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0){
+        ERROR("ptrace: PTRACE_SINGLESTEP failed");
+    }
+    check_process();
 }

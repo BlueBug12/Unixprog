@@ -38,7 +38,7 @@ int main(int argc, char *argv[]){
     while(1){
         if(fp){//read command in script
             if(getline(&line,&len,fp)==-1){
-                sdb.terminate();                
+                sdb.quit();                
             }    
         }else{//read command from stdin
             SIGN();
@@ -50,17 +50,12 @@ int main(int argc, char *argv[]){
             line[strlen(line)-1] = '\0';
         }
         char * cmd = parse_cmd(line,cmd_tokens);
-        /*
-        fprintf(stderr,"token len= %zu\n",token_num);
-        for(size_t i=0;i<token_num;++i){
-            fprintf(stderr,"%s\n",cmd_tokens[i]);
-        }*/
         if(strcmp(cmd,"break")==0 || strcmp(cmd,"b") == 0){
             if(cmd_tokens.size() >= 1){
                 unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
                 sdb.set_break(addr);
             }else{
-                DEBUG("no addr is given.");
+                DEBUG("no addr is given");
             }
         }else if(strcmp(cmd,"cont")    == 0 || strcmp(cmd,"c") == 0){
             sdb.cont();
@@ -68,14 +63,14 @@ int main(int argc, char *argv[]){
             if(cmd_tokens.size()>=1){
                 sdb.del(atoi(cmd_tokens[0]));
             }else{
-                DEBUG("no addr is given.");
+                DEBUG("no break-point-id is given");
             }
         }else if(strcmp(cmd,"disasm")  == 0 || strcmp(cmd,"d") == 0){
             if(cmd_tokens.size()>=1){
                 unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
                 sdb.disasm(addr,ASM_LINES);
             }else{
-                DEBUG("no addr is given.");
+                DEBUG("no addr is given");
             }
         }else if(strcmp(cmd,"dump")    == 0 || strcmp(cmd,"x") == 0){
             if(cmd_tokens.size()>=1){
@@ -85,7 +80,13 @@ int main(int argc, char *argv[]){
                 DEBUG("no addr is given.");
             }
         }else if(strcmp(cmd,"exit")    == 0 || strcmp(cmd,"q") == 0){
+            sdb.quit();
         }else if(strcmp(cmd,"get")     == 0 || strcmp(cmd,"g") == 0){
+            if(cmd_tokens.size()>=1){
+                sdb.get(cmd_tokens[0]);
+            }else{
+                DEBUG("no register is given");
+            }
         }else if(strcmp(cmd,"getregs") == 0){
             sdb.getregs();
         }else if(strcmp(cmd,"help")    == 0 || strcmp(cmd,"h") == 0){
@@ -98,9 +99,17 @@ int main(int argc, char *argv[]){
             else
                 DEBUG("no program path is given");
         }else if(strcmp(cmd,"run")     == 0 || strcmp(cmd,"r") == 0){
+            sdb.run();
         }else if(strcmp(cmd,"vmmap")   == 0 || strcmp(cmd,"m") == 0){
         }else if(strcmp(cmd,"set")     == 0 || strcmp(cmd,"s") == 0){
+            if(cmd_tokens.size()>=2){
+                unsigned long val = strtoul(cmd_tokens[1],NULL,16);
+                sdb.set(cmd_tokens[0], val);
+            }else{
+                DEBUG("Not enough input arguments");
+            }
         }else if(strcmp(cmd,"si")      == 0){
+            sdb.si();
         }else if(strcmp(cmd,"start")   == 0){
             sdb.start();       
         }else{

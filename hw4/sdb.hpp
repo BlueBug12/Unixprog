@@ -7,6 +7,7 @@
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <sys/user.h>
+#include <sys/stat.h>
 #include <elf.h>
 #include <inttypes.h>
 #include <capstone/capstone.h>
@@ -36,19 +37,24 @@ class SDB{
 public:
     SDB();
     ~SDB();
-    void terminate();
-    void get_code(char* file_name);
-    void help();
     void set_break(unsigned long addr);
-    void load(char * file_name);
-    void start();
-    void list();
     void cont();
-    void getregs();
-    void disasm(unsigned long addr, size_t len);
     void del(int id);
+    void disasm(unsigned long addr, size_t len);
     void dump(unsigned long addr);
+    void quit();
+    void get(char * reg_name);
+    void getregs();
+    void help();
+    void list();
+    void load(char * file_name);
+    void run();
+    void set(char * reg_name, unsigned long val);
+    void si();
+    void start();
     bool in_text(unsigned long addr);
+    void get_code(char* file_name);
+    void check_process();
 
 private:
     Elf64_Ehdr elf_header;

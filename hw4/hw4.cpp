@@ -4,7 +4,7 @@ char* parse_cmd(char * line, std::vector<char *>& cmd_tokens){
     cmd_tokens.clear();
     char * cmd = strtok(line," ");
     if(cmd == NULL){
-        ERROR("token length = 0");
+        return NULL;
     }
     char * token = NULL;
     while((token = strtok(NULL," "))!=NULL){
@@ -50,6 +50,9 @@ int main(int argc, char *argv[]){
             line[strlen(line)-1] = '\0';
         }
         char * cmd = parse_cmd(line,cmd_tokens);
+        if(cmd==NULL){
+            continue;
+        }
         if(strcmp(cmd,"break")==0 || strcmp(cmd,"b") == 0){
             if(cmd_tokens.size() >= 1){
                 unsigned long addr = strtoul(cmd_tokens[0],NULL,16);
@@ -101,6 +104,7 @@ int main(int argc, char *argv[]){
         }else if(strcmp(cmd,"run")     == 0 || strcmp(cmd,"r") == 0){
             sdb.run();
         }else if(strcmp(cmd,"vmmap")   == 0 || strcmp(cmd,"m") == 0){
+            sdb.vmmap();
         }else if(strcmp(cmd,"set")     == 0 || strcmp(cmd,"s") == 0){
             if(cmd_tokens.size()>=2){
                 unsigned long val = strtoul(cmd_tokens[1],NULL,16);

@@ -2,6 +2,8 @@
 
 SDB::SDB(){
     state = NOT_LOADED;
+    pre_addr = 0;
+    pre_val = 0;
     code_text = NULL;
     code_size = 0;
     pid = 0;
@@ -79,6 +81,15 @@ void SDB::start(){
         sprintf(buf,"pid %d",pid);
         DEBUG(buf);
         state = RUNNING;
+        //reset break points
+        
+        for(auto it = addr_list.begin();it!=addr_list.end();++it){
+            //long code = it->second;
+            long cur_code = ptrace(PTRACE_PEEKTEXT, pid, pre_addr, NULL);
+            if(ptrace(PTRACE_POKETEXT, pid, it->first, (cur_code & 0xffffffffffffff00) | 0xcc)!=0){
+                ERROR("ptrace: PTRACE_POKETEXT failed");
+            }
+        }
     }
 }
 
@@ -140,7 +151,7 @@ void SDB::load(char * file_name){
             fread(&(sect_header),1 , sizeof(Elf64_Shdr), fp);
             //find the text scetion
             if(strcmp(sect_name+sect_header.sh_name,".text")==0){
-                fprintf(stderr, "from %0lx to %0lx\n", sect_header.sh_addr, sect_header.sh_addr+sect_header.sh_size);
+                //fprintf(stderr, "from %0lx to %0lx\n", sect_header.sh_addr, sect_header.sh_addr+sect_header.sh_size);
                 break;    
             }
         }
@@ -152,10 +163,39 @@ void SDB::load(char * file_name){
     }
 }
 
+void SDB::restore_bp(){
+    if(pre_addr!=0){
+        fprintf(stderr,"reset bp at 0x%lx\n",pre_addr);
+        long cur_code = ptrace(PTRACE_PEEKTEXT, pid, pre_addr, NULL);
+        if(ptrace(PTRACE_POKETEXT, pid, pre_addr, (cur_code & 0xffffffffffffff00) | 0xcc)!=0){
+            ERROR("ptrace: PTRACE_POKETEXT failed");
+        }
+        pre_addr = 0;
+    }
+}
+
+void SDB::si(){
+    if(state!=RUNNING){
+        DEBUG("state must be RUNNING");
+        return;
+    }
+    if(pre_addr!=0 && ptrace(PTRACE_POKETEXT, pid, pre_addr, pre_val) < 0){
+        ERROR("ptrace: PTRACE_POKETEXT failed");
+    }
+    if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0){
+        ERROR("ptrace: PTRACE_SINGLESTEP failed");
+    }
+    check_process();
+}
+
 void SDB::cont(){
     if(state!=RUNNING){
         DEBUG("state must be RUNNING");
         return;
+    }
+    
+    if(pre_addr!=0 && ptrace(PTRACE_POKETEXT, pid, pre_addr, pre_val) < 0){
+        ERROR("ptrace: PTRACE_POKETEXT failed");
     }
     if(ptrace(PTRACE_CONT,pid,0,0) < 0){
         ERROR("ptrace: PTRACE_CONT failed");
@@ -171,6 +211,7 @@ void SDB::check_process(){
     //check the child process exit normally
     if(WIFEXITED(status)){
         char buf[128];
+        //restore_bp();
         if(WIFSIGNALED(status)){
             sprintf(buf,"child process %d terminated by signal (code %d)", pid, WTERMSIG(status));
         }else{
@@ -179,8 +220,11 @@ void SDB::check_process(){
         DEBUG(buf);
         pid = 0;
         state = LOADED;
+        pre_val = 0;
+        pre_addr = 0;
     }else if(WIFSTOPPED(status)){
         if(WSTOPSIG(status)==SIGTRAP){            
+            restore_bp();
             struct user_regs_struct regs;
             if(ptrace(PTRACE_GETREGS, pid, 0, &regs)!=0){
                 ERROR("ptrace: PTRACE_GETREGS failed");
@@ -190,17 +234,22 @@ void SDB::check_process(){
                 fprintf(stderr,"** breakpoint at @");
                 disasm(it->first,1);
                 //recover original code
-                if(ptrace(PTRACE_POKETEXT, pid, it->first, it->second) < 0){
-                    ERROR("ptrace: PTRACE_POKETEXT failed");
-                }
+                long ori_code = it->second & 0xff;
+                pre_addr = it->first;
+                pre_val = (ptrace(PTRACE_PEEKTEXT, pid, it->first, NULL) & 0xffffffffffffff00) | ori_code;
+                 
                 //recover program counter
                 --regs.rip;
                 if(ptrace(PTRACE_SETREGS, pid, 0, &regs) != 0){
                     ERROR("ptrace: PTRACE_SETREGS failed");
                 }
-            }else{
-                //ERROR("hit no addr??");
+            }else{//step in
+                if((it=addr_list.find(regs.rip))!=addr_list.end()){
+                    si();
+                }
             }
+        }else{
+           DEBUG("tttttttttttttttttttttttttt") ;
         }    
     }else{
         char buf[128];
@@ -218,11 +267,11 @@ void SDB::getregs(){
     if(ptrace(PTRACE_GETREGS, pid, 0, &regs)!=0){
         ERROR("ptrace: PTRACE_GETREGS failed");
     }
-    fprintf(stderr,"RAX %-16llx RBX %-16llx RCX %-16llx RDX %-16llx\n", regs.rax, regs.rbx, regs.rcx, regs.rdx);
-    fprintf(stderr,"R8  %-16llx R9  %-16llx R10 %-16llx R11 %-16llx\n", regs.r8,  regs.r9,  regs.r10, regs.r11);
-    fprintf(stderr,"R12 %-16llx R13 %-16llx R14 %-16llx R15 %-16llx\n", regs.r12, regs.r13, regs.r14, regs.r15);
-    fprintf(stderr,"RDI %-16llx RSI %-16llx RBP %-16llx RSP %-16llx\n", regs.rdi, regs.rsi, regs.rbp, regs.rsp);
-    fprintf(stderr,"RIP %-16llx FLAGS %-16llx\n", regs.rip, regs.eflags);
+    fprintf(stderr,"RAX %-16llx  RBX %-16llx  RCX %-16llx  RDX %-16llx\n", regs.rax, regs.rbx, regs.rcx, regs.rdx);
+    fprintf(stderr,"R8  %-16llx  R9  %-16llx  R10 %-16llx  R11 %-16llx\n", regs.r8,  regs.r9,  regs.r10, regs.r11);
+    fprintf(stderr,"R12 %-16llx  R13 %-16llx  R14 %-16llx  R15 %-16llx\n", regs.r12, regs.r13, regs.r14, regs.r15);
+    fprintf(stderr,"RDI %-16llx  RSI %-16llx  RBP %-16llx  RSP %-16llx\n", regs.rdi, regs.rsi, regs.rbp, regs.rsp);
+    fprintf(stderr,"RIP %-16llx  FLAGS %016llx\n", regs.rip, regs.eflags);
 }
 
 void SDB::disasm(unsigned long addr, size_t len){
@@ -432,6 +481,8 @@ void SDB::set(char * reg_name, unsigned long val){
         regs.rsp = val;
     }else if(strcmp(reg_name,"rip")==0){
         regs.rip = val;
+        pre_addr = 0;
+        pre_val = 0;
     }else if(strcmp(reg_name,"flags")==0){
         regs.eflags = val;
     }else{
@@ -444,13 +495,47 @@ void SDB::set(char * reg_name, unsigned long val){
     }
 }
 
-void SDB::si(){
+void SDB::vmmap(){
     if(state!=RUNNING){
         DEBUG("state must be RUNNING");
         return;
     }
-    if(ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0){
-        ERROR("ptrace: PTRACE_SINGLESTEP failed");
+    char buf[64];
+    sprintf(buf,"/proc/%d/maps",pid);
+    FILE * fp;
+    if((fp=fopen(buf,"r"))==NULL){
+        ERROR("fopen failed");
     }
-    check_process();
+    char * line = NULL;
+    char * token = NULL;
+    size_t len;
+    while(getline(&line,&len,fp)!=-1){
+        //vm_start
+        if((token = strtok(line, "-"))!=NULL){
+            unsigned long addr = strtoul(token, NULL, 16);
+            fprintf(stderr,"%016lx-", addr);
+        }
+        //vm_end
+        if((token = strtok(NULL, " "))!=NULL){
+            unsigned long addr = strtoul(token, NULL, 16);
+            fprintf(stderr,"%016lx ", addr);
+        }
+        //permissions
+        if((token = strtok(NULL, "p"))!=NULL){
+            fprintf(stderr, "%s ", token);
+        }
+        //offset
+        if((token = strtok(NULL, " "))!=NULL){
+            unsigned long addr = strtoul(token, NULL, 16);
+            fprintf(stderr,"%-8lx  ", addr);
+        }
+        //device
+        token = strtok(NULL, " ");
+        //inode
+        token = strtok(NULL, " ");
+        //pathname
+        if((token = strtok(NULL, " "))!=NULL){
+            fprintf(stderr, "%s", token);
+        }
+    }
 }

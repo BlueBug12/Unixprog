@@ -17,7 +17,7 @@
 #include <iterator>
 
 #define MAX_TOKEN_NUM 10
-#define ERROR(message) fprintf(stderr,"Error: %s\n",message); exit(EXIT_FAILURE)
+#define ERROR(message) fprintf(stderr,"Error: %s at line %d\n",message,__LINE__); exit(EXIT_FAILURE)
 #define SIGN() fprintf(stderr,"sdb> ")
 #define PRINT(str) fprintf(stderr,"%s\n",str)
 #define DEBUG(str) fprintf(stderr,"** %s\n",str)
@@ -49,17 +49,21 @@ public:
     void list();
     void load(char * file_name);
     void run();
+    void vmmap();
     void set(char * reg_name, unsigned long val);
     void si();
     void start();
     bool in_text(unsigned long addr);
     void get_code(char* file_name);
     void check_process();
+    void restore_bp();
 
 private:
     Elf64_Ehdr elf_header;
     Elf64_Shdr sect_header;
     std::map<unsigned long, long>addr_list;
+    unsigned long pre_addr;
+    long pre_val;
     int state;
     size_t code_size;
     pid_t pid;

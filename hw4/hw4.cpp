@@ -20,7 +20,16 @@ int main(int argc, char *argv[]){
     std::vector<char *>cmd_tokens;
 
     SDB sdb;
-    if(argc == 3){
+    if(argc == 4){
+        if(strcmp(argv[1],"-s")!=0){
+            ERROR("unexpected flag.");
+        }else{
+            if((fp=fopen(argv[2],"r"))==NULL){
+                ERROR("can not open script file.");
+            }
+            sdb.load(argv[3]);
+        }
+    }else if(argc == 3){
         if(strcmp(argv[1],"-s")!=0){
             ERROR("unexpected flag.");
         }else{

@@ -1,14 +1,13 @@
 CXX := g++
 TARGET := hw4
 OBJ := sdb.o hw4.o
-CFLAGS := -g -Wall -O3 -lcapstone
-INCLUDE = /usr/lib/
+CFLAGS := -g -Wall -O3
 
 $(TARGET): $(OBJ)
-	$(CXX) $(CFLAGS) $^ -o $@ -I$(INCLUDE)
+	$(CXX) $(CFLAGS) $^ -o $@ -lcapstone
 
 %.o: %.cpp
-	$(CXX) $(CFLAGS) -c $< -I$(INCLUDE)
+	$(CXX) $(CFLAGS) -c $< -lcapstone
 
 .PHONY: clean
 clean:
